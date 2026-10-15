@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Literal
 
+from app.chat.citations import fix_citations
 from app.chat.prompts import NOT_COVERED, NOT_COVERED_REPLY, SYSTEM_PROMPT, build_user_turn
 from app.knowledge.retrieval import Retriever, ScoredChunk
 from app.llm.base import LLMProvider, Message
@@ -112,7 +113,8 @@ class ChatService:
 
         buffer = ""
         decided = False
-        async for piece in self._provider.stream(SYSTEM_PROMPT, plan.messages, temperature=0.1):
+        pieces = self._provider.stream(SYSTEM_PROMPT, plan.messages, temperature=0.1)
+        async for piece in fix_citations(pieces):
             if decided:
                 yield piece
                 continue

@@ -106,3 +106,10 @@ async def test_history_is_trimmed() -> None:
     plan = svc.plan("How much is whitening?", history)
     assert len(plan.messages) == 7
     assert all(len(m.content) <= 1000 for m in plan.messages[:-1])
+
+
+async def test_full_width_citations_are_normalised_in_the_answer() -> None:
+    svc = service(FakeProvider(pieces=["A cleaning ", "costs $95【", "1】."]))
+    kind, text = await collect(svc, "How much is a cleaning?")
+    assert kind == "answer"
+    assert text == "A cleaning costs $95[1]."
