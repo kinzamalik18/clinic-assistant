@@ -8,6 +8,7 @@ Needs an API key in .env and uses roughly 100 model calls. Progress is printed a
 goes; --providers picks which providers to use without editing .env.
     python -m eval.run_eval --online
     python -m eval.run_eval --online --providers groq
+    python -m eval.run_eval --online --sections chat
 """
 
 from __future__ import annotations
@@ -124,13 +125,9 @@ def offline(service: ChatService, top_k: int) -> tuple[list[Row], list[str]]:
     return rows, misses
 
 
-async def online(
-    service: ChatService, triager: Triager, delay: float
-) -> tuple[list[Row], list[str]]:
+async def online_chat(service: ChatService, delay: float) -> tuple[list[Row], list[str]]:
     questions = load("questions.jsonl")
-    messages = load("messages.jsonl")
     misses: list[str] = []
-
     correct = cited = answered = errors = 0
     for i, q in enumerate(questions, start=1):
         progress("chat questions", i, len(questions))
@@ -147,10 +144,27 @@ async def online(
             misses.append(f"chat: {q['question']!r} expected {q['expect']}, got {plan.kind}")
         if plan.kind == "answer":
             answered += 1
-            cited += bool(CITATION.search(text))
+            if CITATION.search(text):
+                cited += 1
+            else:
+                # Show the start of the answer so a missing or differently written
+                # citation can be told apart.
+                snippet = " ".join(text.split())[:160]
+                misses.append(f"no citation: {q['question']!r} answered {snippet!r}")
         if plan.fixed_text is None:
             await asyncio.sleep(delay)
 
+    rows = [
+        Row("Chat: final reply type matches the label", pct(correct, len(questions))),
+        Row("Chat: answers that cite a source", pct(cited, answered)),
+        Row("Chat: model errors", str(errors)),
+    ]
+    return rows, misses
+
+
+async def online_triage(triager: Triager, delay: float) -> tuple[list[Row], list[str]]:
+    messages = load("messages.jsonl")
+    misses: list[str] = []
     right_category = urgent_ok = triage_errors = 0
     for i, m in enumerate(messages, start=1):
         progress("contact messages", i, len(messages))
@@ -170,9 +184,6 @@ async def online(
         await asyncio.sleep(delay)
 
     rows = [
-        Row("Chat: final reply type matches the label", pct(correct, len(questions))),
-        Row("Chat: answers that cite a source", pct(cited, answered)),
-        Row("Chat: model errors", str(errors)),
         Row("Triage: category matches the label", pct(right_category, len(messages))),
         Row("Triage: urgent or not, correct", pct(urgent_ok, len(messages))),
         Row("Triage: model errors", str(triage_errors)),
@@ -269,8 +280,17 @@ async def main() -> None:
     parser.add_argument(
         "--providers", help="comma-separated providers for this run, e.g. groq or groq,gemini"
     )
+    parser.add_argument(
+        "--sections",
+        default="chat,triage,booking",
+        help="online sections to run, comma-separated: chat, triage, booking",
+    )
     args = parser.parse_args()
 
+    sections = {x.strip() for x in args.sections.split(",") if x.strip()}
+    unknown = sections - {"chat", "triage", "booking"}
+    if unknown:
+        raise SystemExit(f"Unknown section(s): {', '.join(sorted(unknown))}")
     settings = get_settings()
     if args.providers:
         settings = settings.model_copy(update={"llm_providers": args.providers})
@@ -294,15 +314,21 @@ async def main() -> None:
         if args.online:
             if provider.name == "none":
                 raise SystemExit("No API key found. Add GEMINI_API_KEY or GROQ_API_KEY to .env.")
-            online_rows, online_misses = await online(
-                service, Triager(provider, retriever), args.delay
-            )
-            print_table(f"Online: full pipeline with {provider.name}", online_rows)
-            misses += online_misses
-            today = datetime.now(timezone.utc).astimezone(ZoneInfo(settings.clinic_timezone)).date()
-            booking_rows, booking_misses = await booking_online(provider, today, args.delay)
-            print_table(f"Online: reading booking requests with {provider.name}", booking_rows)
-            misses += booking_misses
+            if "chat" in sections:
+                chat_rows, chat_misses = await online_chat(service, args.delay)
+                print_table(f"Online: patient chat with {provider.name}", chat_rows)
+                misses += chat_misses
+            if "triage" in sections:
+                triager = Triager(provider, retriever)
+                triage_rows, triage_misses = await online_triage(triager, args.delay)
+                print_table(f"Online: contact message triage with {provider.name}", triage_rows)
+                misses += triage_misses
+            if "booking" in sections:
+                tz = ZoneInfo(settings.clinic_timezone)
+                today = datetime.now(timezone.utc).astimezone(tz).date()
+                booking_rows, booking_misses = await booking_online(provider, today, args.delay)
+                print_table(f"Online: reading booking requests with {provider.name}", booking_rows)
+                misses += booking_misses
 
     if args.show_misses and misses:
         print("\n### Misses\n")
