@@ -1,14 +1,24 @@
 import { SSEParser } from "./lib/sse";
 
-export type ReplyKind = "answer" | "not_covered" | "emergency" | "urgent" | "medication";
+export type ReplyKind = "answer" | "not_covered" | "emergency" | "urgent" | "medication" | "booking";
 
 export type Source = { number: number; id: string; title: string; section: string; text: string };
 
 export type ChatTurn = { role: "user" | "assistant"; content: string };
 
+export type SlotOffer = { start: string; label: string };
+
+export type BookingOffer = {
+  service: string | null;
+  service_label: string | null;
+  slots: SlotOffer[];
+  choices: { key: string; label: string }[];
+};
+
 export type ChatHandlers = {
   onMeta: (kind: ReplyKind, sources: Source[]) => void;
   onText: (text: string) => void;
+  onSlots: (offer: BookingOffer) => void;
   onDone: (kind: ReplyKind) => void;
   onError: (message: string) => void;
 };
@@ -20,13 +30,14 @@ export async function streamChat(
   history: ChatTurn[],
   handlers: ChatHandlers,
   signal: AbortSignal,
+  mode: "chat" | "book" = "chat",
 ): Promise<void> {
   let response: Response;
   try {
     response = await fetch("/api/chat", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history, mode }),
       signal,
     });
   } catch (error) {
@@ -56,6 +67,8 @@ export async function streamChat(
           handlers.onMeta(payload.kind as ReplyKind, (payload.sources as Source[]) ?? []);
         } else if (event === "delta") {
           handlers.onText(String(payload.text ?? ""));
+        } else if (event === "slots") {
+          handlers.onSlots(payload as unknown as BookingOffer);
         } else if (event === "done") {
           finished = true;
           handlers.onDone(payload.kind as ReplyKind);
@@ -103,6 +116,46 @@ export async function submitContact(form: ContactForm): Promise<SubmitResult> {
   return { ok: false, error: "Your message couldn't be sent. Please call us instead." };
 }
 
+export type BookingRequest = {
+  service: string;
+  start: string;
+  name: string;
+  email: string;
+  phone: string;
+  website: string;
+};
+
+export type BookingResult =
+  | { ok: true; when: string; serviceLabel: string }
+  | { ok: false; error: string; taken: boolean };
+
+export async function requestBooking(form: BookingRequest): Promise<BookingResult> {
+  let response: Response;
+  try {
+    response = await fetch("/api/bookings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...form, phone: form.phone || null }),
+    });
+  } catch {
+    return { ok: false, taken: false, error: "The booking couldn't be sent. Check your connection and try again." };
+  }
+  if (response.ok) {
+    const data = (await response.json()) as { when: string; service_label: string };
+    return { ok: true, when: data.when, serviceLabel: data.service_label };
+  }
+  if (response.status === 409) {
+    return { ok: false, taken: true, error: "Someone just took that time. Please pick another one." };
+  }
+  if (response.status === 429) {
+    return { ok: false, taken: false, error: "You've already requested several times. Please call us instead." };
+  }
+  if (response.status === 422) {
+    return { ok: false, taken: false, error: "Check your name and email. If they look right, pick another time." };
+  }
+  return { ok: false, taken: false, error: "The booking couldn't be sent. Please call us instead." };
+}
+
 // Staff API
 
 export type MessageSummary = {
@@ -133,6 +186,24 @@ export type Stats = {
   by_category: Record<string, number>;
   sent: number;
   sent_without_edits: number;
+};
+
+export type BookingStatus = "requested" | "confirmed" | "declined" | "cancelled";
+
+export type Booking = {
+  id: number;
+  created_at: string;
+  service: string;
+  service_label: string;
+  starts_at: string;
+  local_start: string;
+  when: string;
+  room: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  status: BookingStatus;
+  reviewed_at: string | null;
 };
 
 export class StaffAuthError extends Error {}

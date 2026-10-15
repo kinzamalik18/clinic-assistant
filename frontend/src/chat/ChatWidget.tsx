@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
-import { type ChatTurn, type ReplyKind, type Source, streamChat } from "../api";
+import { type BookingOffer, type ChatTurn, type ReplyKind, type Source, streamChat } from "../api";
 import { LogoMark } from "../brand/Logo";
 import { PHONE, PHONE_HREF } from "../clinic";
 import { AnswerText } from "./AnswerText";
+import { SlotPicker } from "./SlotPicker";
 
 type Entry = {
   id: number;
@@ -11,15 +12,17 @@ type Entry = {
   text: string;
   kind?: ReplyKind;
   sources: Source[];
+  offer?: BookingOffer;
   state: "streaming" | "done" | "error";
 };
 
 const STARTERS = [
   "How much is a cleaning?",
   "Which insurance plans do you take?",
-  "Are you open on Saturdays?",
   "What should I bring to my first visit?",
 ];
+
+const BOOK_PROMPT = "I'd like to book an appointment";
 
 const HISTORY_TURNS = 6;
 
@@ -57,7 +60,7 @@ export function ChatWidget({ open, onOpenChange }: { open: boolean; onOpenChange
     );
   }, []);
 
-  const ask = async (question: string) => {
+  const ask = async (question: string, mode: "chat" | "book" = "chat") => {
     const text = question.trim();
     if (!text || busy) return;
     const history = toHistory(entries);
@@ -78,11 +81,13 @@ export function ChatWidget({ open, onOpenChange }: { open: boolean; onOpenChange
       {
         onMeta: (kind, sources) => update(replyId, { kind, sources }),
         onText: (piece) => update(replyId, (e) => ({ text: e.text + piece })),
+        onSlots: (offer) => update(replyId, { offer }),
         onDone: (kind) =>
           update(replyId, (e) => ({ kind, state: "done", sources: kind === "answer" ? e.sources : [] })),
         onError: (message) => update(replyId, { text: message, state: "error", sources: [] }),
       },
       controller.signal,
+      mode,
     );
     setBusy(false);
     input.current?.focus();
@@ -128,6 +133,13 @@ export function ChatWidget({ open, onOpenChange }: { open: boolean; onOpenChange
               .
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void ask(BOOK_PROMPT, "book")}
+                className="rounded-full bg-sage px-3 py-1.5 text-left text-sm font-bold text-enamel hover:bg-sage-dark"
+              >
+                Book an appointment
+              </button>
               {STARTERS.map((q) => (
                 <button
                   key={q}
@@ -151,6 +163,7 @@ export function ChatWidget({ open, onOpenChange }: { open: boolean; onOpenChange
             <AssistantEntry
               key={entry.id}
               entry={entry}
+              onChooseService={(label) => void ask(`I'd like to book: ${label}`, "book")}
               openSource={openSource?.entry === entry.id ? openSource.number : null}
               onCite={(number) =>
                 setOpenSource((current) =>
@@ -207,10 +220,12 @@ function AssistantEntry({
   entry,
   openSource,
   onCite,
+  onChooseService,
 }: {
   entry: Entry;
   openSource: number | null;
   onCite: (number: number) => void;
+  onChooseService: (label: string) => void;
 }) {
   const source = entry.sources.find((s) => s.number === openSource);
 
@@ -246,6 +261,7 @@ function AssistantEntry({
           <p className="text-ink-soft">Looking that up</p>
         )}
       </div>
+      {entry.offer && <SlotPicker offer={entry.offer} onChooseService={onChooseService} />}
       {source && (
         <figure className="mt-3 rounded-xl border border-line bg-enamel px-4 py-3 text-sm">
           <figcaption className="font-bold">
