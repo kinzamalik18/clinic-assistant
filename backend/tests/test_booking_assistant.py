@@ -39,6 +39,8 @@ def assistant(tmp_path: Path, reply: str, rooms: int = 1) -> tuple[BookingAssist
         ("Can I book a cleaning next week?", True),
         ("Do you have any openings on Saturday?", True),
         ("When can I come in for a check-up?", True),
+        ("A check-up on Saturday morning please", True),
+        ("I'm new and want to register", True),
         ("How much is a cleaning?", False),
         ("Do you take Delta Dental?", False),
     ],

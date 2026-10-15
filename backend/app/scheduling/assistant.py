@@ -14,10 +14,14 @@ from app.scheduling.intent import BookingIntent, extract_intent
 from app.scheduling.slots import SlotRules, find_slots
 from app.scheduling.store import BookingStore
 
-# Cheap first check so ordinary questions don't cost an extra model call.
+# Cheap first check so ordinary questions don't cost an extra model call. Booking words,
+# a named day or time of day, or registering as a new patient all count as hints.
 _BOOKING_HINT = re.compile(
     r"\b(book|booking|appointment|appt|schedule|available|availability|slots?|openings?"
-    r"|reserve|come in|fit me in|see (?:a|the) (?:dentist|hygienist))",
+    r"|reserve|come in|fit me in|see (?:a|the) (?:dentist|hygienist)"
+    r"|today|tomorrow|tonight|next week|this week|mornings?|afternoons?"
+    r"|(?:mon|tues|wednes|thurs|fri|satur|sun)days?"
+    r"|register|new patient|first (?:visit|exam|appointment))",
     re.IGNORECASE,
 )
 
