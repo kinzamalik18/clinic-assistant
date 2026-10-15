@@ -4,8 +4,10 @@ Offline (default): retrieval, routing and the safety rules. No API calls.
     python -m eval.run_eval
 
 Online: also runs the real model for every question, message and booking request.
-Needs an API key in .env and uses roughly 100 model calls.
+Needs an API key in .env and uses roughly 100 model calls. Progress is printed as it
+goes; --providers picks which providers to use without editing .env.
     python -m eval.run_eval --online
+    python -m eval.run_eval --online --providers groq
 """
 
 from __future__ import annotations
@@ -13,7 +15,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import re
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -40,6 +44,12 @@ CITATION = re.compile(r"\[\d+\]")
 def load(name: str) -> list[dict[str, Any]]:
     lines = (HERE / name).read_text(encoding="utf-8").splitlines()
     return [json.loads(line) for line in lines if line.strip()]
+
+
+def progress(label: str, done: int, total: int) -> None:
+    """Show where a long online run is, on one line that overwrites itself."""
+    end = "\n" if done == total else ""
+    print(f"\r  {label}: {done}/{total}", end=end, file=sys.stderr, flush=True)
 
 
 def pct(part: int, whole: int) -> str:
@@ -122,7 +132,8 @@ async def online(
     misses: list[str] = []
 
     correct = cited = answered = errors = 0
-    for q in questions:
+    for i, q in enumerate(questions, start=1):
+        progress("chat questions", i, len(questions))
         plan = service.plan(q["question"], [])
         try:
             text = "".join([piece async for piece in service.stream(plan)])
@@ -141,7 +152,8 @@ async def online(
             await asyncio.sleep(delay)
 
     right_category = urgent_ok = triage_errors = 0
-    for m in messages:
+    for i, m in enumerate(messages, start=1):
+        progress("contact messages", i, len(messages))
         try:
             result = await triager.triage(m["name"], m["subject"], m["body"])
         except LLMError as exc:
@@ -198,7 +210,8 @@ async def booking_online(
     misses: list[str] = []
     wants_ok = service_ok = details_ok = errors = 0
     bookings = [r for r in requests if r["expect"]["wants_appointment"]]
-    for r in requests:
+    for i, r in enumerate(requests, start=1):
+        progress("booking requests", i, len(requests))
         expect = r["expect"]
         try:
             got = await extract_intent(provider, r["message"], [], today)
@@ -253,9 +266,18 @@ async def main() -> None:
     parser.add_argument("--online", action="store_true", help="also call the real model")
     parser.add_argument("--delay", type=float, default=4.0, help="seconds between model calls")
     parser.add_argument("--show-misses", action="store_true", help="list every failed case")
+    parser.add_argument(
+        "--providers", help="comma-separated providers for this run, e.g. groq or groq,gemini"
+    )
     args = parser.parse_args()
 
     settings = get_settings()
+    if args.providers:
+        settings = settings.model_copy(update={"llm_providers": args.providers})
+    try:
+        settings.provider_order  # noqa: B018 - validates the provider names
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from None
     retriever = BM25Retriever(load_chunks(settings.resolve(settings.knowledge_dir)))
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(settings.llm_timeout_seconds, connect=5.0)
@@ -289,4 +311,9 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nStopped. Sections that finished are printed above.", file=sys.stderr)
+        sys.exit(130)
