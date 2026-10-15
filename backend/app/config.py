@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # Abuse limits.
     chat_rate_limit_per_minute: int = 20
     contact_rate_limit_per_hour: int = 5
+    booking_rate_limit_per_hour: int = 3
+
+    # Scheduling. Times are shown and checked in the clinic's own time zone.
+    clinic_timezone: str = "America/New_York"
+    treatment_rooms: int = 3
+    booking_lead_minutes: int = 120
+    booking_horizon_days: int = 14
 
     @property
     def provider_order(self) -> list[str]:
