@@ -1,6 +1,5 @@
 @import "@fontsource-variable/bricolage-grotesque";
-@import "@fontsource/atkinson-hyperlegible/400.css";
-@import "@fontsource/atkinson-hyperlegible/700.css";
+@import "@fontsource-variable/lexend";
 @import "tailwindcss";
 
 @theme {
@@ -18,7 +17,7 @@
   --color-amber-soft: #fdf1e3;
 
   --font-display: "Bricolage Grotesque Variable", "Segoe UI", sans-serif;
-  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Lexend Variable", "Segoe UI", system-ui, sans-serif;
 }
 
 @layer base {
