@@ -4,13 +4,15 @@ A website chatbot and a staff inbox agent for a dental clinic, built as a portfo
 project. The clinic, Brightside Dental, is made up; so are its prices, phone numbers
 and staff.
 
-Two parts work together:
+Three parts work together:
 
 - **Patient chatbot.** Answers questions about prices, hours, insurance and visits
   using only the clinic's own documents, and shows which document each answer came
   from. When the documents don't cover something, it says so and points to the front
   desk instead of guessing. Emergencies get a fixed "call 911" or "call us today"
   reply before any AI model is involved.
+- **Appointment booking.** Patients ask in the chat ("a cleaning next week, mornings")
+  and get real open times to pick from. The chosen time is held until staff confirm it.
 - **Inbox agent.** Messages from the website's contact form are sorted into categories
   (appointment, billing, complaint and so on), and a reply is drafted for each one. A
   person reviews, edits and approves every reply. Nothing is sent automatically.
@@ -35,6 +37,14 @@ Patient question
   -> model answers from the top sections, with [n] citations
        -> model says NOT_COVERED                     -> handoff reply
   -> streamed to the browser over server-sent events
+
+Booking request in the chat ("cleaning next week, mornings")
+  -> safety rules first: an emergency is never offered appointment times
+  -> model reads the request: service, roughly when, morning or afternoon (JSON)
+  -> code turns that into a date range and searches open times
+       (opening hours, appointment length, treatment rooms, existing bookings)
+  -> patient picks a time; the server re-checks it and holds it
+  -> staff confirm or decline it in the Appointments tab
 
 Contact form message
   -> stored in SQLite, triaged in the background
@@ -67,21 +77,30 @@ Contact form message
   doesn't rely on that alone: model output is always shown as plain text, never as
   HTML; triage output must match a fixed JSON schema; only the rule-based check can
   mark a message urgent; and no reply goes out without a person approving it.
+- **The model never decides dates or availability.** For bookings it only classifies the
+  request into fixed choices ("next week", "on a date", "morning"). Code works out the
+  dates and finds free times. Language models are unreliable at "which date is next
+  Tuesday" and at spotting clashes, so that work is plain, tested arithmetic in the
+  clinic's own time zone.
+- **No double booking.** Choosing a treatment room and saving the booking happen inside one
+  write-locked SQLite transaction. A test sends eight simultaneous requests for the last
+  free room and checks that exactly one succeeds; it fails if the lock is removed.
 - **Retrieval is keyword-based (BM25).** It needs no model download and no API calls,
   which keeps the service small enough for a free host. The evaluation below shows
   where it falls short. Retrieval sits behind an interface so an embedding-based
   retriever can be added and compared.
 - **Staff access** uses one shared bearer token, checked in constant time. Staff
   endpoints refuse to work until a token of at least 16 characters is set.
-- **Abuse limits:** 20 chat requests per minute and 5 contact messages per hour per IP,
+- **Abuse limits:** 20 chat requests per minute, 5 contact messages and 3 bookings per
+  hour per IP,
   length limits on every input, and a hidden form field that catches simple spam bots.
 - **Browser security headers:** a strict Content-Security-Policy (the app only loads
   its own scripts, styles and fonts), `nosniff`, and no framing.
 
 ## Evaluation
 
-`backend/eval` has 45 patient questions and 30 contact messages, written the way
-patients would phrase them and labeled by hand. The offline run needs no API key:
+`backend/eval` has 45 patient questions, 30 contact messages and 20 booking requests,
+written the way patients would phrase them and labeled by hand. The offline run needs no API key:
 
 ```
 cd backend
@@ -93,12 +112,14 @@ Offline results:
 | Measure | Result |
 | --- | --- |
 | Safety questions given the right fixed reply | 6/6 (100%) |
-| Answerable: right section ranked first | 24/34 (71%) |
+| Answerable: right section ranked first | 23/34 (68%) |
 | Answerable: right section in top 4 | 28/34 (82%) |
 | Answerable but stopped by the retrieval threshold | 1/34 (3%) |
 | Out-of-scope questions stopped before the model | 2/5 (40%) |
 | Urgent contact messages caught by the safety rules | 4/4 (100%) |
 | Non-urgent messages wrongly flagged urgent | 0/26 (0%) |
+| Booking requests sent to the booking model | 14/14 (100%) |
+| Ordinary questions that also trigger the booking model | 6/45 (13%) |
 
 What the misses show:
 
@@ -111,11 +132,20 @@ What the misses show:
   night?" gets through because "last" matches "lasts about 45 minutes" in the first-visit
   section. Those questions rely on the model replying `NOT_COVERED`, which the online run
   measures.
-- **The sets are small.** 45 questions and 30 messages are enough to catch regressions,
-  not to prove accuracy on real traffic.
+- **Adding documents can move rankings.** The booking section added to the clinic documents
+  says "time" twice, so it now outranks opening hours for "what time do you close on
+  fridays". I kept the natural wording rather than tuning it back.
+- **The booking pre-check was adjusted after seeing its misses.** It first sent only 11 of
+  14 booking requests to the model; requests like "a check-up on Saturday morning" got an
+  information answer instead of times. It now also reacts to named days, times of day and
+  new-patient phrases. Because I changed it after looking at this set, 14/14 is an
+  optimistic number, and the 6/45 extra model calls are the price.
+- **The sets are small.** They are enough to catch regressions, not to prove accuracy on
+  real traffic.
 
-The online run also calls the model for every question and message (about 75 calls,
-spaced out to respect free-tier rate limits):
+The online run also calls the model for every question, message and booking request
+(about 100 calls, spaced out to respect free-tier rate limits). For bookings it checks the
+service, the dates and the time of day the model read from each message:
 
 ```
 python -m eval.run_eval --online --show-misses
@@ -154,14 +184,16 @@ You need Python 3.10 or newer and Node.js 22.
    staff inbox. The Vite dev server forwards `/api` requests to the backend on port 8000.
 
 To check the model connection, open the chat and ask "How much is a cleaning?". The
-answer should mention $95 and show a numbered source. Then send a message through the
-contact form and open the staff inbox; a drafted reply should appear within a few seconds.
+answer should mention $95 and show a numbered source. Then ask "Can I book a cleaning next
+week?", pick a time, and find it under Appointments in the staff inbox. Finally, send a
+message through the contact form; a drafted reply should appear in the inbox within a few
+seconds.
 
 ## Tests
 
 ```
 cd backend
-pytest              # 72 tests, no network access needed
+pytest              # 129 tests, no network access needed
 ruff check . && ruff format --check . && mypy
 
 cd frontend
@@ -174,7 +206,8 @@ GitHub Actions runs all of these, plus the offline evaluation, on every push.
 ## Deploying
 
 The `Dockerfile` builds the frontend and runs the API, which serves it on `$PORT`
-(8000 by default). Set the same variables as in `.env.example` on your host. Behind a
+(8000 by default). Set the same variables as in `.env.example` on your host, including
+`CLINIC_TIMEZONE` and `TREATMENT_ROOMS` for the booking rules. Behind a
 hosting platform's proxy, also set `FORWARDED_ALLOW_IPS=*` so rate limits apply per
 visitor rather than to the proxy's address. Only do that when the app can't be reached
 except through the proxy.
@@ -184,8 +217,12 @@ on redeploy unless that folder is on a persistent volume.
 
 ## Limitations and next steps
 
-- Approved replies are marked as sent but not emailed. A real deployment would connect an
-  email provider.
+- Approved replies and appointment confirmations are recorded but not emailed. A real
+  deployment would connect an email provider.
+- Requested times stay held until staff act on them. A real clinic would want holds to
+  expire, and protection beyond the rate limit against someone holding many times.
+- Patients can book in the chat but not move or cancel appointments there; those requests
+  get the policy answer and the phone number.
 - Staff share a single token. Individual accounts with an audit trail would be needed for
   real use.
 - Rate limits live in memory, which is fine for one instance. Several instances would
@@ -202,6 +239,7 @@ on redeploy unless that folder is on a persistent volume.
 backend/
   app/
     chat/        answer pipeline and prompts
+    scheduling/  booking: services, slot search, booking store, request reading
     inbox/       triage and SQLite store
     knowledge/   document loading and BM25 retrieval
     llm/         Gemini and Groq clients, fallback
@@ -213,5 +251,5 @@ backend/
 frontend/
   src/site/      clinic website and contact form
   src/chat/      chat widget
-  src/staff/     staff inbox
+  src/staff/     staff inbox and appointments
 ```
