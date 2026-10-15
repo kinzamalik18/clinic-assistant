@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Sequence
+import time
+from collections.abc import AsyncIterator, Callable, Sequence
 
 import httpx
 
@@ -16,9 +17,38 @@ logger = logging.getLogger(__name__)
 
 
 class FallbackProvider:
-    def __init__(self, providers: Sequence[LLMProvider]) -> None:
+    """Try providers in order. A provider that just failed with an overload, rate limit
+    or network error is moved to the back of the line for a while, so that during an
+    outage every request doesn't wait for it to time out again.
+    """
+
+    def __init__(
+        self,
+        providers: Sequence[LLMProvider],
+        cooldown_seconds: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._providers = list(providers)
+        self._cooldown = cooldown_seconds
+        self._clock = clock
+        self._resting_until: dict[str, float] = {}
         self.name = "+".join(p.name for p in self._providers) or "none"
+
+    def _order(self) -> list[LLMProvider]:
+        """Healthy providers first, in configured order, then resting ones as a last resort."""
+        now = self._clock()
+        healthy = [p for p in self._providers if self._resting_until.get(p.name, 0) <= now]
+        resting = [p for p in self._providers if p not in healthy]
+        return healthy + resting
+
+    def _failed(self, provider: LLMProvider, exc: LLMError) -> None:
+        logger.warning("LLM provider %s failed: %s", provider.name, exc)
+        if exc.transient:
+            self._resting_until[provider.name] = self._clock() + self._cooldown
+            logger.info("Trying other providers first for %.0f seconds", self._cooldown)
+
+    def _succeeded(self, provider: LLMProvider) -> None:
+        self._resting_until.pop(provider.name, None)
 
     async def complete(
         self,
@@ -30,9 +60,9 @@ class FallbackProvider:
         max_tokens: int = 1024,
     ) -> str:
         errors: list[str] = []
-        for provider in self._providers:
+        for provider in self._order():
             try:
-                return await provider.complete(
+                text = await provider.complete(
                     system,
                     messages,
                     json_mode=json_mode,
@@ -40,8 +70,11 @@ class FallbackProvider:
                     max_tokens=max_tokens,
                 )
             except LLMError as exc:
-                logger.warning("LLM provider %s failed: %s", provider.name, exc)
+                self._failed(provider, exc)
                 errors.append(str(exc))
+                continue
+            self._succeeded(provider)
+            return text
         raise LLMError("All LLM providers failed: " + "; ".join(errors or ["none configured"]))
 
     async def stream(
@@ -58,7 +91,7 @@ class FallbackProvider:
         half-answers glued together, so a mid-stream failure is raised instead.
         """
         errors: list[str] = []
-        for provider in self._providers:
+        for provider in self._order():
             started = False
             try:
                 async for piece in provider.stream(
@@ -67,12 +100,13 @@ class FallbackProvider:
                     started = True
                     yield piece
                 if started:
+                    self._succeeded(provider)
                     return
                 errors.append(f"{provider.name} returned no text")
             except LLMError as exc:
+                self._failed(provider, exc)
                 if started:
                     raise
-                logger.warning("LLM provider %s failed: %s", provider.name, exc)
                 errors.append(str(exc))
         raise LLMError("All LLM providers failed: " + "; ".join(errors or ["none configured"]))
 

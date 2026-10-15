@@ -7,6 +7,8 @@ import httpx
 from app.llm.base import LLMError
 
 MAX_DETAIL = 200
+# Overload, rate limits and gateway problems are worth retrying later.
+TRANSIENT_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 async def http_error(provider: str, response: httpx.Response, api_key: str) -> LLMError:
@@ -28,4 +30,4 @@ async def http_error(provider: str, response: httpx.Response, api_key: str) -> L
     text = f"{provider} returned HTTP {response.status_code}{detail}"
     if api_key:
         text = text.replace(api_key, "[key]")
-    return LLMError(text)
+    return LLMError(text, transient=response.status_code in TRANSIENT_STATUSES)

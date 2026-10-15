@@ -81,7 +81,7 @@ class GeminiProvider:
         try:
             response = await self._client.post(url, headers=self._headers, json=body)
         except httpx.HTTPError as exc:
-            raise LLMError(f"Gemini request failed: {type(exc).__name__}") from exc
+            raise LLMError(f"Gemini request failed: {type(exc).__name__}", transient=True) from exc
         if response.status_code != 200:
             raise await http_error("Gemini", response, self._key)
         text = self._text(response.json())
@@ -112,4 +112,4 @@ class GeminiProvider:
                     if text:
                         yield text
         except httpx.HTTPError as exc:
-            raise LLMError(f"Gemini stream failed: {type(exc).__name__}") from exc
+            raise LLMError(f"Gemini stream failed: {type(exc).__name__}", transient=True) from exc

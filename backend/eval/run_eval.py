@@ -257,7 +257,9 @@ async def main() -> None:
 
     settings = get_settings()
     retriever = BM25Retriever(load_chunks(settings.resolve(settings.knowledge_dir)))
-    async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(settings.llm_timeout_seconds, connect=5.0)
+    ) as client:
         provider = build_provider(settings, client)
         service = ChatService(
             retriever, provider, settings.retrieval_top_k, settings.retrieval_min_score

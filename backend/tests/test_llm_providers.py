@@ -130,22 +130,29 @@ async def test_network_error_becomes_llm_error() -> None:
 class ScriptedProvider:
     """Test double: fails, or yields the given pieces."""
 
-    def __init__(self, name: str, pieces: list[str] | None, fail_after: int | None = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        pieces: list[str] | None,
+        fail_after: int | None = None,
+        transient: bool = False,
+    ) -> None:
         self.name = name
         self.pieces = pieces
         self.fail_after = fail_after
+        self.transient = transient
         self.calls = 0
 
     async def complete(self, system: str, messages: list[Message], **_: object) -> str:
         self.calls += 1
         if self.pieces is None:
-            raise LLMError(f"{self.name} down")
+            raise LLMError(f"{self.name} down", transient=self.transient)
         return "".join(self.pieces)
 
     async def stream(self, system: str, messages: list[Message], **_: object) -> AsyncIterator[str]:
         self.calls += 1
         if self.pieces is None:
-            raise LLMError(f"{self.name} down")
+            raise LLMError(f"{self.name} down", transient=self.transient)
         for i, piece in enumerate(self.pieces):
             if self.fail_after is not None and i == self.fail_after:
                 raise LLMError(f"{self.name} dropped")
@@ -249,3 +256,65 @@ async def test_error_without_a_json_body_still_reports_the_status() -> None:
     async with client_with(httpx.MockTransport(handler)) as client:
         with pytest.raises(LLMError, match=r"^Groq returned HTTP 502$"):
             await GroqProvider(client, "k", "m").complete("s", USER)
+
+
+async def test_overloaded_provider_rests_and_comes_back_after_the_cooldown() -> None:
+    now = [0.0]
+    first = ScriptedProvider("gemini", None, transient=True)
+    second = ScriptedProvider("groq", ["ok"])
+    provider = FallbackProvider([first, second], cooldown_seconds=60, clock=lambda: now[0])
+
+    assert await provider.complete("s", USER) == "ok"
+    assert (first.calls, second.calls) == (1, 1)
+
+    now[0] = 30  # still resting: the backup answers without waiting for the first again
+    assert "".join([p async for p in provider.stream("s", USER)]) == "ok"
+    assert (first.calls, second.calls) == (1, 2)
+
+    now[0] = 61  # rest is over, so the configured order applies again
+    first.pieces = ["back"]
+    assert await provider.complete("s", USER) == "back"
+    assert (first.calls, second.calls) == (2, 2)
+
+
+async def test_setup_errors_do_not_rest_the_provider() -> None:
+    first = ScriptedProvider("gemini", None, transient=False)  # e.g. wrong model name
+    second = ScriptedProvider("groq", ["ok"])
+    provider = FallbackProvider([first, second], clock=lambda: 0.0)
+    await provider.complete("s", USER)
+    await provider.complete("s", USER)
+    assert first.calls == 2  # keeps failing loudly instead of being quietly skipped
+
+
+async def test_resting_providers_are_still_tried_when_nothing_else_works() -> None:
+    first = ScriptedProvider("gemini", None, transient=True)
+    second = ScriptedProvider("groq", None, transient=True)
+    provider = FallbackProvider([first, second], clock=lambda: 0.0)
+    for _ in range(2):
+        with pytest.raises(LLMError):
+            await provider.complete("s", USER)
+    assert (first.calls, second.calls) == (2, 2)
+
+
+@pytest.mark.parametrize(
+    ("status", "transient"), [(503, True), (429, True), (404, False), (401, False)]
+)
+async def test_which_http_errors_count_as_transient(status: int, transient: bool) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, json={"error": {"message": "x"}})
+
+    async with client_with(httpx.MockTransport(handler)) as client:
+        with pytest.raises(LLMError) as info:
+            await GeminiProvider(client, "k", "m").complete("s", USER)
+    assert info.value.transient is transient
+
+
+async def test_timeouts_count_as_transient() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow")
+
+    async with client_with(httpx.MockTransport(handler)) as client:
+        with pytest.raises(LLMError) as info:
+            async for _ in GeminiProvider(client, "k", "m").stream("s", USER):
+                pass
+    assert info.value.transient

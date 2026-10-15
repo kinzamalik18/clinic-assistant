@@ -61,7 +61,7 @@ class GroqProvider:
         try:
             response = await self._client.post(URL, headers=self._headers, json=body)
         except httpx.HTTPError as exc:
-            raise LLMError(f"Groq request failed: {type(exc).__name__}") from exc
+            raise LLMError(f"Groq request failed: {type(exc).__name__}", transient=True) from exc
         if response.status_code != 200:
             raise await http_error("Groq", response, self._key)
         try:
@@ -95,4 +95,4 @@ class GroqProvider:
                         if text:
                             yield str(text)
         except httpx.HTTPError as exc:
-            raise LLMError(f"Groq stream failed: {type(exc).__name__}") from exc
+            raise LLMError(f"Groq stream failed: {type(exc).__name__}", transient=True) from exc

@@ -49,7 +49,9 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        async with httpx.AsyncClient(timeout=settings.llm_timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(settings.llm_timeout_seconds, connect=5.0)
+        ) as client:
             llm = provider or build_provider(settings, client)
             retriever = BM25Retriever(load_chunks(settings.resolve(settings.knowledge_dir)))
             app.state.chat_service = ChatService(

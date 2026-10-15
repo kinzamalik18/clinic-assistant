@@ -8,7 +8,15 @@ from typing import Literal, Protocol
 
 
 class LLMError(Exception):
-    """A model call failed. The message is safe to log; it never contains API keys."""
+    """A model call failed. The message is safe to log; it never contains API keys.
+
+    `transient` marks failures that usually clear up by themselves: overload, rate
+    limits and network problems. A wrong key or model name is not transient.
+    """
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        super().__init__(message)
+        self.transient = transient
 
 
 @dataclass(frozen=True)
