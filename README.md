@@ -17,19 +17,17 @@ Three parts work together:
   (appointment, billing, complaint and so on), and a reply is drafted for each one. A
   person reviews, edits and approves every reply. Nothing is sent automatically.
 
-![Chat widget answering a price question with a source](docs/screenshots/chat.png)
+![Chat widget answering a price question with a source](docs/screenshots/chat.jpg)
 
 | Booking in the chat | Emergency handling |
 | --- | --- |
-| ![A check-up held from the chat after the requested time was full](docs/screenshots/booking.jpg) | ![Emergency reply in the chat](docs/screenshots/emergency.png) |
+| ![A check-up held from the chat after the requested time was full](docs/screenshots/booking.jpg) | ![Emergency reply in the chat](docs/screenshots/emergency.jpg) |
 | **Staff inbox** | **Appointment requests** |
 | ![Urgent message sorted first, with a drafted reply to review](docs/screenshots/staff-inbox.jpg) | ![Held appointments waiting for staff to confirm](docs/screenshots/staff-appointments.jpg) |
 | **Clinic website** | **On a phone** |
-| ![Clinic home page showing today's opening hours](docs/screenshots/home.png) | ![Chat widget on a phone](docs/screenshots/mobile-chat.png) |
+| ![Clinic home page showing today's opening hours](docs/screenshots/home.jpg) | ![Chat widget on a phone](docs/screenshots/mobile-chat.jpg) |
 
-The booking and staff screenshots come from a live run with Groq. The chat and phone
-screenshots were taken with a scripted stand-in for the model, so the wording of those
-answers is mine. Everything else on screen is the real app.
+All screenshots are from a live run with Groq (`openai/gpt-oss-120b`).
 
 ## How it works
 
