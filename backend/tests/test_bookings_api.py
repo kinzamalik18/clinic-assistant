@@ -170,3 +170,13 @@ def test_staff_booking_endpoints_need_the_token(make_client: ClientFactory) -> N
     with make_client() as c:
         assert c.get("/api/staff/bookings").status_code == 401
         assert c.post("/api/staff/bookings/1/confirm").status_code == 401
+
+
+def test_unreadable_booking_reply_falls_back_to_a_normal_answer(
+    make_client: ClientFactory,
+) -> None:
+    with make_client(reply="this is not JSON") as c:
+        message = {"message": "What is the fee if I miss an appointment?"}
+        events = parse_sse(c.post("/api/chat", json=message).text)
+    assert events[0][1]["kind"] == "answer"
+    assert "error" not in [name for name, _ in events]

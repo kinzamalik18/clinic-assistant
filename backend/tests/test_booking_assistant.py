@@ -134,3 +134,33 @@ async def test_invalid_model_output_raises(tmp_path: Path) -> None:
     helper, _ = assistant(tmp_path, "not json")
     with pytest.raises(LLMError):
         await helper.propose("book a cleaning", [])
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"wants_appointment": False, "service": None},
+        {"wants_appointment": False, "service": "unknown", "when": None, "weekdays": None},
+        {"wants_appointment": True, "service": "unknown", "date_from": "", "part_of_day": ""},
+        {"wants_appointment": False},
+    ],
+)
+def test_blank_fields_mean_not_specified(payload: dict[str, object]) -> None:
+    parsed = BookingIntent.model_validate(payload)
+    assert parsed.service == "unknown" and parsed.when == "soonest" and parsed.weekdays == []
+
+
+def test_unexpected_values_fall_back_to_defaults() -> None:
+    parsed = BookingIntent.model_validate(
+        {
+            "wants_appointment": True,
+            "service": " Cleaning ",
+            "when": "tomorrow",
+            "weekdays": ["Monday", "someday", 3],
+            "part_of_day": "evening",
+        }
+    )
+    assert parsed.service == "cleaning"
+    assert parsed.when == "soonest"
+    assert parsed.weekdays == ["monday"]
+    assert parsed.part_of_day == "any"

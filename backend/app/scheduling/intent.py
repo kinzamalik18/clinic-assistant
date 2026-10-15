@@ -10,9 +10,9 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date, timedelta
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from app.llm.base import LLMError, LLMProvider, Message
 from app.scheduling.clinic import SERVICES
@@ -32,14 +32,43 @@ WEEKDAYS: tuple[Weekday, ...] = (
 )
 
 
+_WHEN_VALUES = ("soonest", "this_week", "next_week", "on_date", "between_dates")
+_PARTS = ("any", "morning", "afternoon")
+
+
 class BookingIntent(BaseModel):
-    wants_appointment: bool
-    service: str
+    wants_appointment: bool = False
+    service: str = "unknown"
     when: When = "soonest"
     date_from: date | None = None
     date_to: date | None = None
     weekdays: list[Weekday] = []
     part_of_day: Literal["any", "morning", "afternoon"] = "any"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _treat_blanks_as_unspecified(cls, data: Any) -> Any:
+        """Models often answer null or "" for parts that don't apply, especially when the
+        message isn't a booking at all. Those mean "not specified", not "invalid".
+        Values outside the allowed choices fall back to the defaults the same way.
+        """
+        if not isinstance(data, dict):
+            return data
+        cleaned = {k: v for k, v in data.items() if v is not None and v != ""}
+        if isinstance(cleaned.get("service"), str):
+            cleaned["service"] = cleaned["service"].strip().lower()
+        if cleaned.get("when") not in _WHEN_VALUES:
+            cleaned.pop("when", None)
+        if cleaned.get("part_of_day") not in _PARTS:
+            cleaned.pop("part_of_day", None)
+        days = cleaned.get("weekdays")
+        if isinstance(days, list):
+            cleaned["weekdays"] = [
+                d.lower() for d in days if isinstance(d, str) and d.lower() in WEEKDAYS
+            ]
+        else:
+            cleaned.pop("weekdays", None)
+        return cleaned
 
     def service_known(self) -> bool:
         return self.service in SERVICES
@@ -108,7 +137,11 @@ async def extract_intent(
         )
         try:
             return _parse(raw)
-        except (json.JSONDecodeError, ValidationError) as exc:
-            logger.warning("Booking intent was not valid: %s", type(exc).__name__)
+        except json.JSONDecodeError as exc:
+            logger.warning("Booking intent was not JSON")
+            last_error = exc
+        except ValidationError as exc:
+            fields = sorted({".".join(str(x) for x in e["loc"]) or "(root)" for e in exc.errors()})
+            logger.warning("Booking intent had invalid fields: %s", ", ".join(fields))
             last_error = exc
     raise LLMError("Model did not return a valid booking request") from last_error

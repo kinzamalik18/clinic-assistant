@@ -69,9 +69,10 @@ async def _respond(
         try:
             proposal = await booking.propose(message, history, forced=mode == "book")
         except LLMError as exc:
-            logger.error("Booking request failed: %s", exc)
-            yield _event("error", {"message": UNAVAILABLE})
-            return
+            # Reading the request failed. A normal answer is better than an error,
+            # and the booking button stays available.
+            logger.warning("Booking request could not be read, answering normally: %s", exc)
+            proposal = None
         if proposal is not None:
             yield _event("meta", {"kind": "booking", "sources": []})
             yield _event("delta", {"text": proposal.text})
