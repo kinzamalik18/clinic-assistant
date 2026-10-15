@@ -31,7 +31,6 @@ class Settings(BaseSettings):
     staff_token: SecretStr = SecretStr("")
     database_path: str = "var/clinic.db"
     knowledge_dir: str = "data/clinic"
-    cors_origins: str = "http://localhost:5173"
 
     # Retrieval: chunks scoring below this are treated as "not covered by the documents".
     retrieval_top_k: int = 4
@@ -48,10 +47,6 @@ class Settings(BaseSettings):
         if unknown:
             raise ValueError(f"Unknown LLM provider(s) in LLM_PROVIDERS: {', '.join(unknown)}")
         return names
-
-    @property
-    def cors_origin_list(self) -> list[str]:
-        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     def resolve(self, relative: str) -> Path:
         path = Path(relative)
