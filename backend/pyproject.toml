@@ -39,7 +39,7 @@ ignore = ["S101", "SIM905"]
 [tool.mypy]
 python_version = "3.10"
 strict = true
-packages = ["app"]
+packages = ["app", "eval"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
