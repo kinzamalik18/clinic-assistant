@@ -25,6 +25,7 @@ def test_serves_pages_and_assets_with_security_headers(tmp_path: Path) -> None:
         assert "frame-ancestors 'none'" in home.headers["content-security-policy"]
         assert home.headers["x-content-type-options"] == "nosniff"
         assert c.get("/staff").status_code == 200
+        assert c.head("/").status_code == 200  # uptime monitors often send HEAD
         assert c.get("/assets/app.js").status_code == 200
         assert c.get("/does-not-exist").status_code == 404
         health = c.get("/api/health")

@@ -54,8 +54,8 @@ def mount_frontend(app: FastAPI, dist: Path) -> None:
         return FileResponse(index, headers={"cache-control": "no-cache"})
 
     # The two pages of the single-page app. Other paths fall through to a 404.
-    app.add_api_route("/", page, include_in_schema=False)
-    app.add_api_route("/staff", page, include_in_schema=False)
+    for path in ("/", "/staff"):
+        app.add_api_route(path, page, methods=["GET", "HEAD"], include_in_schema=False)
 
     favicon = dist / "favicon.svg"
     if favicon.is_file():
