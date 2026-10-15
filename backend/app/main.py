@@ -9,9 +9,11 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
-from app.api import chat
+from app.api import chat, inbox
 from app.chat.service import ChatService
 from app.config import Settings, get_settings
+from app.inbox.store import MessageStore
+from app.inbox.triage import Triager
 from app.knowledge.documents import load_chunks
 from app.knowledge.retrieval import BM25Retriever
 from app.llm.base import LLMProvider
@@ -34,11 +36,15 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
                 retriever, llm, settings.retrieval_top_k, settings.retrieval_min_score
             )
             app.state.chat_limiter = RateLimiter(settings.chat_rate_limit_per_minute, 60)
+            app.state.triager = Triager(llm, retriever)
+            app.state.store = MessageStore(settings.resolve(settings.database_path))
+            app.state.contact_limiter = RateLimiter(settings.contact_rate_limit_per_hour, 3600)
             yield
 
     app = FastAPI(title="Clinic Assistant", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.include_router(chat.router)
+    app.include_router(inbox.router)
 
     @app.get("/api/health")
     def health() -> dict[str, str]:

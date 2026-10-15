@@ -18,7 +18,7 @@ def make_settings(tmp_path: Path, **overrides: object) -> Settings:
         "database_path": str(tmp_path / "test.db"),
     }
     values.update(overrides)
-    return Settings(_env_file=None, **values)  # type: ignore[call-arg]
+    return Settings(_env_file=None, **values)
 
 
 def parse_sse(body: str) -> list[tuple[str, dict[str, object]]]:
