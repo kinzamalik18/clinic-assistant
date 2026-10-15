@@ -8,7 +8,12 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.llm.base import LLMError
-from app.scheduling.assistant import BookingAssistant, format_slot, looks_like_booking
+from app.scheduling.assistant import (
+    BookingAssistant,
+    _describe,
+    format_slot,
+    looks_like_booking,
+)
 from app.scheduling.intent import BookingIntent
 from app.scheduling.slots import SlotRules
 from app.scheduling.store import BookingStore, NewBooking
@@ -90,6 +95,29 @@ async def test_offers_open_times_with_the_patients_preferences(tmp_path: Path) -
         "Here are open times for a cleaning in the morning next week. "
         "Pick one and we'll hold it for you."
     )
+
+
+@pytest.mark.parametrize(
+    ("fields", "described"),
+    [
+        ({"part_of_day": "morning", "when": "next_week"}, "in the morning next week"),
+        ({"weekdays": ["tuesday"], "part_of_day": "morning"}, "on Tuesday morning"),
+        ({"weekdays": ["monday", "friday"], "when": "this_week"}, "on Monday or Friday this week"),
+        (
+            {
+                "weekdays": ["thursday"],
+                "part_of_day": "afternoon",
+                "when": "on_date",
+                "date_from": "2026-10-15",
+            },
+            "on Thursday 15 October in the afternoon",
+        ),
+        ({}, ""),
+    ],
+)
+def test_describe_names_each_preference_once(fields: dict[str, object], described: str) -> None:
+    parsed = BookingIntent.model_validate(json.loads(intent(**fields)))
+    assert _describe(parsed) == described
 
 
 async def test_held_slots_are_not_offered_again(tmp_path: Path) -> None:

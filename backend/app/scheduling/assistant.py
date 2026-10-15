@@ -57,17 +57,22 @@ def _with_article(noun: str) -> str:
 
 
 def _describe(intent: BookingIntent) -> str:
+    part = "" if intent.part_of_day == "any" else intent.part_of_day
+    if intent.when == "on_date" and intent.date_from:
+        # The date already names its weekday, so any weekdays the model returned are dropped.
+        day = intent.date_from
+        text = f"on {day:%A} {day.day} {day:%B}"
+        return f"{text} in the {part}" if part else text
     parts = []
     if intent.weekdays:
-        parts.append("on " + ", ".join(d.capitalize() for d in intent.weekdays))
-    if intent.part_of_day != "any":
-        parts.append(f"in the {intent.part_of_day}")
+        names = " or ".join(d.capitalize() for d in intent.weekdays)
+        parts.append(f"on {names} {part}" if part else f"on {names}")
+    elif part:
+        parts.append(f"in the {part}")
     if intent.when == "this_week":
         parts.append("this week")
     elif intent.when == "next_week":
         parts.append("next week")
-    elif intent.when == "on_date" and intent.date_from:
-        parts.append(f"on {intent.date_from:%A} {intent.date_from.day} {intent.date_from:%B}")
     return " ".join(parts)
 
 
