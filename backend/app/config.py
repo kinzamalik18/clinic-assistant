@@ -22,9 +22,9 @@ class Settings(BaseSettings):
     )
 
     gemini_api_key: SecretStr = SecretStr("")
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     groq_api_key: SecretStr = SecretStr("")
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-120b"
     llm_providers: str = "gemini,groq"
     llm_timeout_seconds: float = 30.0
 

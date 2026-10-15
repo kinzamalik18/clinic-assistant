@@ -174,3 +174,78 @@ async def test_fallback_does_not_switch_provider_mid_stream() -> None:
 async def test_fallback_with_no_providers_raises() -> None:
     with pytest.raises(LLMError, match="none configured"):
         await FallbackProvider([]).complete("s", USER)
+
+
+def capture(seen: dict[str, object], reply: dict[str, object]) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=reply)
+
+    return httpx.MockTransport(handler)
+
+
+GEMINI_OK = {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}
+GROQ_OK = {"choices": [{"message": {"content": "ok"}}]}
+
+
+async def test_gemini_3_uses_low_thinking_and_extra_output_room() -> None:
+    seen: dict[str, object] = {}
+    async with client_with(capture(seen, GEMINI_OK)) as client:
+        await GeminiProvider(client, "k", "gemini-3.8-flash").complete("s", USER, max_tokens=300)
+    config = seen["body"]["generationConfig"]
+    assert config["thinkingConfig"] == {"thinkingLevel": "low"}
+    assert config["maxOutputTokens"] == 300 + 2048
+
+
+async def test_older_gemini_models_get_no_thinking_level() -> None:
+    seen: dict[str, object] = {}
+    async with client_with(capture(seen, GEMINI_OK)) as client:
+        await GeminiProvider(client, "k", "gemini-2.0-flash").complete("s", USER, max_tokens=300)
+    config = seen["body"]["generationConfig"]
+    assert "thinkingConfig" not in config
+    assert config["maxOutputTokens"] == 300
+
+
+async def test_groq_gpt_oss_reasons_briefly_and_hides_reasoning() -> None:
+    seen: dict[str, object] = {}
+    async with client_with(capture(seen, GROQ_OK)) as client:
+        await GroqProvider(client, "k", "openai/gpt-oss-120b").complete("s", USER, max_tokens=300)
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert body["reasoning_effort"] == "low"
+    assert body["include_reasoning"] is False
+    assert body["max_completion_tokens"] == 300 + 2048
+
+
+async def test_groq_other_models_get_plain_requests() -> None:
+    seen: dict[str, object] = {}
+    async with client_with(capture(seen, GROQ_OK)) as client:
+        await GroqProvider(client, "k", "some-model").complete("s", USER, max_tokens=300)
+    body = seen["body"]
+    assert isinstance(body, dict)
+    assert "reasoning_effort" not in body and body["max_completion_tokens"] == 300
+
+
+async def test_error_includes_the_providers_reason_without_the_key() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        message = "models/old-model is not found. Key sk-secret-123 was used."
+        return httpx.Response(404, json={"error": {"code": 404, "message": message}})
+
+    async with client_with(httpx.MockTransport(handler)) as client:
+        with pytest.raises(LLMError) as info:
+            await GeminiProvider(client, "sk-secret-123", "old-model").complete("s", USER)
+        with pytest.raises(LLMError) as stream_info:
+            async for _ in GroqProvider(client, "sk-secret-123", "old-model").stream("s", USER):
+                pass
+    for error in (info.value, stream_info.value):
+        assert "404" in str(error) and "is not found" in str(error)
+        assert "sk-secret-123" not in str(error) and "[key]" in str(error)
+
+
+async def test_error_without_a_json_body_still_reports_the_status() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(502, text="<html>Bad gateway</html>")
+
+    async with client_with(httpx.MockTransport(handler)) as client:
+        with pytest.raises(LLMError, match=r"^Groq returned HTTP 502$"):
+            await GroqProvider(client, "k", "m").complete("s", USER)

@@ -8,9 +8,14 @@ from typing import Any
 import httpx
 
 from app.llm.base import LLMError, Message
+from app.llm.errors import http_error
 from app.llm.sse import iter_sse_json
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+
+# Thinking tokens count toward maxOutputTokens, and an answer cut off mid-thought comes
+# back empty. Thinking models get this much room on top of the answer's own budget.
+THINKING_HEADROOM = 2048
 
 
 class GeminiProvider:
@@ -20,8 +25,12 @@ class GeminiProvider:
         if not api_key:
             raise ValueError("Gemini API key is empty")
         self._client = client
+        self._key = api_key
         self._headers = {"x-goog-api-key": api_key, "content-type": "application/json"}
         self._model = model
+        self._thinks = model.startswith(("gemini-2.5", "gemini-3"))
+        # Gemini 3 models take a thinking level; "low" keeps short replies fast.
+        self._thinking_level = "low" if model.startswith("gemini-3") else None
 
     def _body(
         self, system: str, messages: list[Message], temperature: float, max_tokens: int
@@ -35,8 +44,17 @@ class GeminiProvider:
                 }
                 for m in messages
             ],
-            "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens},
+            "generationConfig": self._generation_config(temperature, max_tokens),
         }
+
+    def _generation_config(self, temperature: float, max_tokens: int) -> dict[str, Any]:
+        config: dict[str, Any] = {
+            "temperature": temperature,
+            "maxOutputTokens": max_tokens + (THINKING_HEADROOM if self._thinks else 0),
+        }
+        if self._thinking_level:
+            config["thinkingConfig"] = {"thinkingLevel": self._thinking_level}
+        return config
 
     @staticmethod
     def _text(data: dict[str, Any]) -> str:
@@ -65,7 +83,7 @@ class GeminiProvider:
         except httpx.HTTPError as exc:
             raise LLMError(f"Gemini request failed: {type(exc).__name__}") from exc
         if response.status_code != 200:
-            raise LLMError(f"Gemini returned HTTP {response.status_code}")
+            raise await http_error("Gemini", response, self._key)
         text = self._text(response.json())
         if not text.strip():
             raise LLMError("Gemini returned an empty answer")
@@ -86,7 +104,7 @@ class GeminiProvider:
                 "POST", url, params={"alt": "sse"}, headers=self._headers, json=body
             ) as response:
                 if response.status_code != 200:
-                    raise LLMError(f"Gemini returned HTTP {response.status_code}")
+                    raise await http_error("Gemini", response, self._key)
                 async for data in iter_sse_json(response):
                     if not data.get("candidates") and not data.get("promptFeedback"):
                         continue  # e.g. a trailing chunk that only carries usage metadata

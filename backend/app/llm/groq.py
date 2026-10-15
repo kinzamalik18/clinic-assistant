@@ -8,9 +8,13 @@ from typing import Any
 import httpx
 
 from app.llm.base import LLMError, Message
+from app.llm.errors import http_error
 from app.llm.sse import iter_sse_json
 
 URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# Reasoning models spend part of the completion budget on reasoning, so they get extra room.
+REASONING_HEADROOM = 2048
 
 
 class GroqProvider:
@@ -20,19 +24,27 @@ class GroqProvider:
         if not api_key:
             raise ValueError("Groq API key is empty")
         self._client = client
+        self._key = api_key
         self._headers = {"authorization": f"Bearer {api_key}"}
         self._model = model
+        self._reasons = model.startswith("openai/gpt-oss")
 
     def _body(
         self, system: str, messages: list[Message], temperature: float, max_tokens: int
     ) -> dict[str, Any]:
-        return {
+        body: dict[str, Any] = {
             "model": self._model,
             "messages": [{"role": "system", "content": system}]
             + [{"role": m.role, "content": m.content} for m in messages],
             "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_completion_tokens": max_tokens,
         }
+        if self._reasons:
+            # GPT-OSS returns its reasoning in a separate field; it is never shown, so skip it.
+            body["reasoning_effort"] = "low"
+            body["include_reasoning"] = False
+            body["max_completion_tokens"] = max_tokens + REASONING_HEADROOM
+        return body
 
     async def complete(
         self,
@@ -51,7 +63,7 @@ class GroqProvider:
         except httpx.HTTPError as exc:
             raise LLMError(f"Groq request failed: {type(exc).__name__}") from exc
         if response.status_code != 200:
-            raise LLMError(f"Groq returned HTTP {response.status_code}")
+            raise await http_error("Groq", response, self._key)
         try:
             text = response.json()["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError) as exc:
@@ -75,7 +87,7 @@ class GroqProvider:
                 "POST", URL, headers=self._headers, json=body
             ) as response:
                 if response.status_code != 200:
-                    raise LLMError(f"Groq returned HTTP {response.status_code}")
+                    raise await http_error("Groq", response, self._key)
                 async for data in iter_sse_json(response):
                     choices = data.get("choices") or []
                     if choices:
