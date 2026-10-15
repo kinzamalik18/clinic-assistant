@@ -3,8 +3,8 @@
 Offline (default): retrieval, routing and the safety rules. No API calls.
     python -m eval.run_eval
 
-Online: also runs the real model for every question and message. Needs an API key
-in .env and uses roughly 75 model calls.
+Online: also runs the real model for every question, message and booking request.
+Needs an API key in .env and uses roughly 100 model calls.
     python -m eval.run_eval --online
 """
 
@@ -15,8 +15,10 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -25,9 +27,11 @@ from app.config import get_settings
 from app.inbox.triage import Category, Priority, Triager
 from app.knowledge.documents import load_chunks
 from app.knowledge.retrieval import BM25Retriever
-from app.llm.base import LLMError
+from app.llm.base import LLMError, LLMProvider
 from app.llm.fallback import build_provider
 from app.safety import Severity, check_message
+from app.scheduling.assistant import looks_like_booking
+from app.scheduling.intent import extract_intent
 
 HERE = Path(__file__).resolve().parent
 CITATION = re.compile(r"\[\d+\]")
@@ -164,6 +168,79 @@ async def online(
     return rows, misses
 
 
+def booking_offline() -> tuple[list[Row], list[str]]:
+    """How well the cheap keyword check picks out messages that need the booking model."""
+    requests = load("booking_requests.jsonl")
+    questions = load("questions.jsonl")
+    bookings = [r for r in requests if r["expect"]["wants_appointment"]]
+    caught = [r for r in bookings if looks_like_booking(r["message"])]
+    misses = [f"booking hint missed: {r['message']!r}" for r in bookings if r not in caught]
+    # Same order as the chat: safety rules first, so emergencies never reach booking.
+    triggered = [
+        q
+        for q in questions
+        if check_message(q["question"]) is None and looks_like_booking(q["question"])
+    ]
+    rows = [
+        Row("Booking requests sent to the booking model", pct(len(caught), len(bookings))),
+        Row(
+            "Ordinary questions that also trigger the booking model (one extra call each)",
+            pct(len(triggered), len(questions)),
+        ),
+    ]
+    return rows, misses
+
+
+async def booking_online(
+    provider: LLMProvider, today: date, delay: float
+) -> tuple[list[Row], list[str]]:
+    requests = load("booking_requests.jsonl")
+    misses: list[str] = []
+    wants_ok = service_ok = details_ok = errors = 0
+    bookings = [r for r in requests if r["expect"]["wants_appointment"]]
+    for r in requests:
+        expect = r["expect"]
+        try:
+            got = await extract_intent(provider, r["message"], [], today)
+        except LLMError as exc:
+            errors += 1
+            misses.append(f"booking error: {r['message']!r}: {exc}")
+            continue
+        wrong: list[str] = []
+        if got.wants_appointment == expect["wants_appointment"]:
+            wants_ok += 1
+        else:
+            wrong.append(f"wants_appointment={got.wants_appointment}")
+        if expect["wants_appointment"]:
+            if got.service == expect["service"]:
+                service_ok += 1
+            else:
+                wrong.append(f"service={got.service}")
+            detail_wrong = []
+            for key in ("when", "part_of_day"):
+                if key in expect and getattr(got, key) != expect[key]:
+                    detail_wrong.append(f"{key}={getattr(got, key)}")
+            if "weekdays" in expect and sorted(got.weekdays) != sorted(expect["weekdays"]):
+                detail_wrong.append(f"weekdays={got.weekdays}")
+            if "date_offset_days" in expect:
+                wanted = today + timedelta(days=expect["date_offset_days"])
+                if got.date_from != wanted:
+                    detail_wrong.append(f"date_from={got.date_from}")
+            details_ok += not detail_wrong
+            wrong += detail_wrong
+        if wrong:
+            misses.append(f"booking: {r['message']!r} got {', '.join(wrong)}")
+        await asyncio.sleep(delay)
+
+    rows = [
+        Row("Booking or not, correct", pct(wants_ok, len(requests))),
+        Row("Booking requests: right service", pct(service_ok, len(bookings))),
+        Row("Booking requests: right dates, days and time of day", pct(details_ok, len(bookings))),
+        Row("Booking: model errors", str(errors)),
+    ]
+    return rows, misses
+
+
 def print_table(title: str, rows: list[Row]) -> None:
     print(f"\n### {title}\n")
     print("| Measure | Result |\n| --- | --- |")
@@ -187,6 +264,9 @@ async def main() -> None:
         )
         rows, misses = offline(service, settings.retrieval_top_k)
         print_table("Offline: retrieval, routing and safety rules", rows)
+        booking_rows, booking_misses = booking_offline()
+        print_table("Offline: routing to the booking model", booking_rows)
+        misses += booking_misses
         if args.online:
             if provider.name == "none":
                 raise SystemExit("No API key found. Add GEMINI_API_KEY or GROQ_API_KEY to .env.")
@@ -195,6 +275,10 @@ async def main() -> None:
             )
             print_table(f"Online: full pipeline with {provider.name}", online_rows)
             misses += online_misses
+            today = datetime.now(timezone.utc).astimezone(ZoneInfo(settings.clinic_timezone)).date()
+            booking_rows, booking_misses = await booking_online(provider, today, args.delay)
+            print_table(f"Online: reading booking requests with {provider.name}", booking_rows)
+            misses += booking_misses
 
     if args.show_misses and misses:
         print("\n### Misses\n")

@@ -1,0 +1,20 @@
+{"message": "Can I book a cleaning next week?", "expect": {"wants_appointment": true, "service": "cleaning", "when": "next_week"}}
+{"message": "I'd like a check-up on a Saturday morning", "expect": {"wants_appointment": true, "service": "checkup", "weekdays": ["saturday"], "part_of_day": "morning"}}
+{"message": "Do you have any openings for teeth whitening this week?", "expect": {"wants_appointment": true, "service": "whitening", "when": "this_week"}}
+{"message": "I'm new here and want to register and get my first exam", "expect": {"wants_appointment": true, "service": "new_patient_exam"}}
+{"message": "Can I come in for a check-up and a clean, afternoons only please", "expect": {"wants_appointment": true, "service": "checkup_and_cleaning", "part_of_day": "afternoon"}}
+{"message": "I want to book the free implant consult with Dr Romero", "expect": {"wants_appointment": true, "service": "implant_consultation"}}
+{"message": "Book me a scale and polish as soon as possible", "expect": {"wants_appointment": true, "service": "cleaning", "when": "soonest"}}
+{"message": "Any slots for a cleaning on Tuesday or Thursday?", "expect": {"wants_appointment": true, "service": "cleaning", "weekdays": ["tuesday", "thursday"]}}
+{"message": "Need a dental check-up tomorrow if possible", "expect": {"wants_appointment": true, "service": "checkup", "when": "on_date", "date_offset_days": 1}}
+{"message": "I'd like to schedule a whitening session next week in the morning", "expect": {"wants_appointment": true, "service": "whitening", "when": "next_week", "part_of_day": "morning"}}
+{"message": "Can I see the hygienist this week?", "expect": {"wants_appointment": true, "service": "cleaning", "when": "this_week"}}
+{"message": "I need an appointment for a root canal", "expect": {"wants_appointment": true, "service": "unknown"}}
+{"message": "Can I book an appointment to get braces?", "expect": {"wants_appointment": true, "service": "unknown"}}
+{"message": "I'd like to make an appointment", "expect": {"wants_appointment": true, "service": "unknown"}}
+{"message": "What is the fee if I miss an appointment?", "expect": {"wants_appointment": false}}
+{"message": "How do I book an appointment?", "expect": {"wants_appointment": false}}
+{"message": "I need to move my appointment on Friday to next week", "expect": {"wants_appointment": false}}
+{"message": "Please cancel my appointment tomorrow", "expect": {"wants_appointment": false}}
+{"message": "Are you available on Sundays?", "expect": {"wants_appointment": false}}
+{"message": "Will I get a reminder before my appointment?", "expect": {"wants_appointment": false}}
