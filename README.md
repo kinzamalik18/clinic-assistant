@@ -19,14 +19,17 @@ Three parts work together:
 
 ![Chat widget answering a price question with a source](docs/screenshots/chat.png)
 
-| Emergency handling | Staff inbox |
+| Booking in the chat | Emergency handling |
 | --- | --- |
-| ![Emergency reply in the chat](docs/screenshots/emergency.png) | ![Staff reviewing a drafted reply](docs/screenshots/staff.png) |
+| ![A check-up held from the chat after the requested time was full](docs/screenshots/booking.jpg) | ![Emergency reply in the chat](docs/screenshots/emergency.png) |
+| **Staff inbox** | **Appointment requests** |
+| ![Urgent message sorted first, with a drafted reply to review](docs/screenshots/staff-inbox.jpg) | ![Held appointments waiting for staff to confirm](docs/screenshots/staff-appointments.jpg) |
 | **Clinic website** | **On a phone** |
 | ![Clinic home page showing today's opening hours](docs/screenshots/home.png) | ![Chat widget on a phone](docs/screenshots/mobile-chat.png) |
 
-The screenshots were taken with a scripted stand-in for the model, so the wording of
-the answers is mine. Everything else on screen is the real app.
+The booking and staff screenshots come from a live run with Groq. The chat and phone
+screenshots were taken with a scripted stand-in for the model, so the wording of those
+answers is mine. Everything else on screen is the real app.
 
 ## How it works
 
