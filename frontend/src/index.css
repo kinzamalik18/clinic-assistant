@@ -1,0 +1,44 @@
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource/atkinson-hyperlegible/400.css";
+@import "@fontsource/atkinson-hyperlegible/700.css";
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #1d2b3a;
+  --color-ink-soft: #4a5868;
+  --color-enamel: #f6f7f4;
+  --color-paper: #ffffff;
+  --color-line: #dfe3dd;
+  --color-sage: #3f6b5c;
+  --color-sage-dark: #2f5246;
+  --color-blush: #f1dcd5;
+  --color-alert: #b42318;
+  --color-alert-soft: #fdecea;
+  --color-amber: #9a4a07;
+  --color-amber-soft: #fdf1e3;
+
+  --font-display: "Bricolage Grotesque Variable", "Segoe UI", sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-enamel);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-sage);
+    outline-offset: 2px;
+  }
+}
