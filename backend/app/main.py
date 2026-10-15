@@ -19,6 +19,7 @@ from app.knowledge.retrieval import BM25Retriever
 from app.llm.base import LLMProvider
 from app.llm.fallback import build_provider
 from app.ratelimit import RateLimiter
+from app.web import add_security_headers, mount_frontend
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
@@ -50,6 +51,8 @@ def create_app(settings: Settings | None = None, provider: LLMProvider | None = 
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    add_security_headers(app)
+    mount_frontend(app, settings.resolve(settings.static_dir))
     return app
 
 

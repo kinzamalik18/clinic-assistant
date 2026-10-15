@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     staff_token: SecretStr = SecretStr("")
     database_path: str = "var/clinic.db"
     knowledge_dir: str = "data/clinic"
+    # Built frontend. Served only if the folder exists; in development Vite serves it.
+    static_dir: str = "../frontend/dist"
 
     # Retrieval: chunks scoring below this are treated as "not covered by the documents".
     retrieval_top_k: int = 4
