@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { Logo } from "../brand/Logo";
 import { ChatWidget } from "../chat/ChatWidget";
 import { ADDRESS, DAY_NAMES, HOURS, INSURERS, OUT_OF_HOURS_PHONE, PHONE, PHONE_HREF, PRICES } from "../clinic";
 import { formatTime, openStatus } from "../lib/hours";
@@ -27,8 +28,8 @@ export function LandingPage() {
       </a>
 
       <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-5">
-        <a href="/" className="font-display text-xl font-bold tracking-tight">
-          Brightside Dental
+        <a href="/" aria-label="Brightside Dental home">
+          <Logo />
         </a>
         <nav aria-label="Main" className="flex flex-wrap items-center gap-x-6 gap-y-2 text-ink-soft">
           <a href="#prices" className="hover:text-ink">Prices</a>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { type ChatTurn, type ReplyKind, type Source, streamChat } from "../api";
+import { LogoMark } from "../brand/Logo";
 import { PHONE, PHONE_HREF } from "../clinic";
 import { AnswerText } from "./AnswerText";
 
@@ -97,11 +98,14 @@ export function ChatWidget({ open, onOpenChange }: { open: boolean; onOpenChange
       className="fixed inset-x-0 bottom-0 z-40 flex h-[85dvh] flex-col border border-line bg-paper shadow-[0_12px_40px_-12px_rgb(29_43_58/0.35)] sm:inset-x-auto sm:right-6 sm:bottom-6 sm:h-[min(640px,calc(100dvh-3rem))] sm:w-[400px] sm:rounded-2xl"
     >
       <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
-        <div>
-          <h2 id={titleId} className="text-lg font-semibold">
-            Ask Brightside Dental
-          </h2>
-          <p className="text-sm text-ink-soft">Answers come from the clinic's own information.</p>
+        <div className="flex items-start gap-3">
+          <LogoMark size={32} />
+          <div>
+            <h2 id={titleId} className="text-lg font-semibold">
+              Ask Brightside Dental
+            </h2>
+            <p className="text-sm text-ink-soft">Answers come from the clinic's own information.</p>
+          </div>
         </div>
         <button
           type="button"

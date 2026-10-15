@@ -8,6 +8,7 @@ import {
   type Stats,
   staffRequest,
 } from "../api";
+import { LogoMark } from "../brand/Logo";
 import { CATEGORY_LABELS, PRIORITY_STYLES, STATUS_LABELS } from "./labels";
 
 const TOKEN_KEY = "brightside-staff-token";
@@ -73,7 +74,8 @@ function SignIn({ error, onSignIn }: { error: string | null; onSignIn: (token: s
   };
   return (
     <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center px-5">
-      <h1 className="text-3xl font-bold">Staff inbox</h1>
+      <LogoMark size={48} />
+      <h1 className="mt-4 text-3xl font-bold">Staff inbox</h1>
       <p className="mt-2 text-ink-soft">Enter the staff token set on the server.</p>
       <form onSubmit={submit} className="mt-6">
         <label className="block">
@@ -156,14 +158,17 @@ function Inbox({ token, onAuthFailure }: { token: string; onAuthFailure: (reason
     <div className="min-h-dvh">
       <header className="border-b border-line bg-paper">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-5 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">Staff inbox</h1>
-            {stats && (
-              <p className="text-sm text-ink-soft">
-                {waiting} waiting for review. {stats.sent} {stats.sent === 1 ? "reply" : "replies"} sent,{" "}
-                {stats.sent_without_edits} without edits to the draft.
-              </p>
-            )}
+          <div className="flex items-center gap-3">
+            <LogoMark size={40} />
+            <div>
+              <h1 className="text-2xl font-bold">Staff inbox</h1>
+              {stats && (
+                <p className="text-sm text-ink-soft">
+                  {waiting} waiting for review. {stats.sent} {stats.sent === 1 ? "reply" : "replies"} sent,{" "}
+                  {stats.sent_without_edits} without edits to the draft.
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={() => refresh()} className="rounded-lg border border-line px-3 py-2 hover:bg-enamel">
