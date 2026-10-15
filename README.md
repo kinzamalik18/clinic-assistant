@@ -198,9 +198,6 @@ You need Python 3.10 or newer and Node.js 22.
    ```
    python -c "import secrets; print(secrets.token_urlsafe(32))"
    ```
-   On the Gemini free tier, Google may use your prompts to improve its models, so don't
-   put real patient data through it. If Gemini returns an error about the model name,
-   check the current model IDs in AI Studio and change `GEMINI_MODEL`.
 3. **Start the backend.**
    ```
    cd backend
