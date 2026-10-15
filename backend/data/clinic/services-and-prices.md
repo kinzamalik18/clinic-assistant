@@ -6,7 +6,7 @@ A dentist confirms the exact treatment and price at your appointment before any 
 ## Check-ups and cleanings
 A routine check-up with a dentist costs $75 and takes about 20 minutes.
 A cleaning with a hygienist (scale and polish) costs $95 and takes about 40 minutes.
-A combined check-up and cleaning appointment costs $150.
+A combined check-up and cleaning appointment costs $150 and takes about an hour.
 We recommend a check-up and cleaning every six months for most adults.
 
 ## X-rays

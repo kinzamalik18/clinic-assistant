@@ -23,7 +23,7 @@
 {"question": "Can I be put to sleep for my treatment?", "expect": "answer", "sources": ["new-patients#nervous-patients"]}
 {"question": "What happens if I cancel the day before?", "expect": "answer", "sources": ["appointments#cancellation-and-rescheduling-policy"]}
 {"question": "Is there a fee for missing an appointment?", "expect": "answer", "sources": ["appointments#cancellation-and-rescheduling-policy"]}
-{"question": "How do I book an appointment?", "expect": "answer", "sources": ["appointments#how-to-book"]}
+{"question": "How do I book an appointment?", "expect": "answer", "sources": ["appointments#how-to-book", "appointments#booking-in-the-website-chat"]}
 {"question": "Will I get a reminder before my visit?", "expect": "answer", "sources": ["appointments#appointment-reminders"]}
 {"question": "Can I drink coffee after whitening?", "expect": "answer", "sources": ["aftercare#after-teeth-whitening"]}
 {"question": "How long until the numbness wears off after a filling?", "expect": "answer", "sources": ["aftercare#after-a-filling"]}

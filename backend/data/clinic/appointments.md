@@ -1,9 +1,13 @@
 # Booking, changing and cancelling appointments
 
 ## How to book
-You can book by calling the front desk on (555) 010-2400, by sending a message through the contact
-form on our website, or in person at reception. Online bookings through the contact form are confirmed
-by the front desk within one working day.
+You can book by calling the front desk on (555) 010-2400, through the chat on our website, by sending
+a message through the contact form, or in person at reception.
+
+## Booking in the website chat
+In the website chat you can pick an open time for a check-up, cleaning, new patient examination,
+whitening session or implant consultation. Your chosen time is held for you, and the front desk
+confirms it by email within one working day. For anything else, call us or use the contact form.
 
 ## Cancellation and rescheduling policy
 Please give at least 24 hours' notice if you need to cancel or move an appointment.
