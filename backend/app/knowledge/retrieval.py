@@ -39,7 +39,8 @@ def _stem(word: str) -> str:
 
 
 def tokenize(text: str) -> list[str]:
-    return [_stem(t) for t in _TOKEN.findall(text.lower()) if t not in _STOPWORDS]
+    # Single characters are dropped: they are mostly leftovers like the "s" in "what's".
+    return [_stem(t) for t in _TOKEN.findall(text.lower()) if len(t) > 1 and t not in _STOPWORDS]
 
 
 @dataclass(frozen=True)
