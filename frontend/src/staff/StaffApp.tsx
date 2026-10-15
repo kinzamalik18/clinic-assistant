@@ -9,7 +9,9 @@ import {
   staffRequest,
 } from "../api";
 import { LogoMark } from "../brand/Logo";
+import { Appointments } from "./Appointments";
 import { CATEGORY_LABELS, PRIORITY_STYLES, STATUS_LABELS } from "./labels";
+import type { Call } from "./types";
 
 const TOKEN_KEY = "brightside-staff-token";
 const REFRESH_MS = 20_000;
@@ -101,7 +103,11 @@ function SignIn({ error, onSignIn }: { error: string | null; onSignIn: (token: s
   );
 }
 
+type Section = "messages" | "appointments";
+
 function Inbox({ token, onAuthFailure }: { token: string; onAuthFailure: (reason?: string) => void }) {
+  const [section, setSection] = useState<Section>("messages");
+  const [reloadKey, setReloadKey] = useState(0);
   const [filter, setFilter] = useState<Filter>("open");
   const [messages, setMessages] = useState<MessageSummary[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -162,7 +168,7 @@ function Inbox({ token, onAuthFailure }: { token: string; onAuthFailure: (reason
             <LogoMark size={40} />
             <div>
               <h1 className="text-2xl font-bold">Staff inbox</h1>
-              {stats && (
+              {stats && section === "messages" && (
                 <p className="text-sm text-ink-soft">
                   {waiting} waiting for review. {stats.sent} {stats.sent === 1 ? "reply" : "replies"} sent,{" "}
                   {stats.sent_without_edits} without edits to the draft.
@@ -170,8 +176,28 @@ function Inbox({ token, onAuthFailure }: { token: string; onAuthFailure: (reason
               )}
             </div>
           </div>
+          <nav aria-label="Staff sections" className="flex gap-1 rounded-xl bg-enamel p-1">
+            {(["messages", "appointments"] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-current={section === value ? "page" : undefined}
+                onClick={() => setSection(value)}
+                className={`rounded-lg px-4 py-2 text-sm font-bold ${section === value ? "bg-paper text-ink shadow-sm" : "text-ink-soft hover:text-ink"}`}
+              >
+                {value === "messages" ? "Messages" : "Appointments"}
+              </button>
+            ))}
+          </nav>
           <div className="flex gap-2">
-            <button type="button" onClick={() => refresh()} className="rounded-lg border border-line px-3 py-2 hover:bg-enamel">
+            <button
+              type="button"
+              onClick={() => {
+                refresh();
+                setReloadKey((k) => k + 1);
+              }}
+              className="rounded-lg border border-line px-3 py-2 hover:bg-enamel"
+            >
               Refresh
             </button>
             <button type="button" onClick={() => onAuthFailure()} className="rounded-lg px-3 py-2 text-ink-soft hover:bg-enamel">
@@ -187,82 +213,84 @@ function Inbox({ token, onAuthFailure }: { token: string; onAuthFailure: (reason
         </p>
       )}
 
-      <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[380px_1fr]">
-        <section aria-label="Messages">
-          <div role="tablist" aria-label="Filter messages" className="flex gap-1 rounded-xl bg-paper p-1">
-            {FILTERS.map((f) => (
-              <button
-                key={f.value}
-                type="button"
-                role="tab"
-                aria-selected={filter === f.value}
-                onClick={() => setFilter(f.value)}
-                className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${filter === f.value ? "bg-ink text-enamel" : "text-ink-soft hover:bg-enamel"}`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <ul className="mt-4 space-y-2">
-            {visible.length === 0 && (
-              <li className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-ink-soft">
-                {filter === "open"
-                  ? "Nothing to review. New contact form messages appear here."
-                  : "No messages here yet."}
-              </li>
-            )}
-            {visible.map((m) => (
-              <li key={m.id}>
+      {section === "appointments" ? (
+        <Appointments call={call} reloadKey={reloadKey} />
+      ) : (
+        <div className="mx-auto grid max-w-7xl gap-6 px-5 py-6 lg:grid-cols-[380px_1fr]">
+          <section aria-label="Messages">
+            <div role="tablist" aria-label="Filter messages" className="flex gap-1 rounded-xl bg-paper p-1">
+              {FILTERS.map((f) => (
                 <button
+                  key={f.value}
                   type="button"
-                  onClick={() => setSelected(m.id)}
-                  aria-current={selected === m.id}
-                  className={`w-full rounded-xl border px-4 py-3 text-left ${selected === m.id ? "border-sage bg-paper" : "border-line bg-paper/60 hover:border-ink-soft"}`}
+                  role="tab"
+                  aria-selected={filter === f.value}
+                  onClick={() => setFilter(f.value)}
+                  className={`flex-1 rounded-lg px-3 py-2 text-sm font-bold ${filter === f.value ? "bg-ink text-enamel" : "text-ink-soft hover:bg-enamel"}`}
                 >
-                  <span className="flex items-center justify-between gap-3">
-                    <span className="font-bold">{m.name}</span>
-                    {m.priority && (
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${PRIORITY_STYLES[m.priority] ?? ""}`}>
-                        {m.priority}
-                      </span>
-                    )}
-                  </span>
-                  <span className="mt-1 block text-sm text-ink-soft">
-                    {m.summary ?? m.subject}
-                  </span>
-                  <span className="mt-1 block text-xs text-ink-soft">
-                    {m.category ? CATEGORY_LABELS[m.category] ?? m.category : STATUS_LABELS[m.status]}
-                  </span>
+                  {f.label}
                 </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+              ))}
+            </div>
+            <ul className="mt-4 space-y-2">
+              {visible.length === 0 && (
+                <li className="rounded-xl border border-dashed border-line px-4 py-6 text-center text-ink-soft">
+                  {filter === "open"
+                    ? "Nothing to review. New contact form messages appear here."
+                    : "No messages here yet."}
+                </li>
+              )}
+              {visible.map((m) => (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelected(m.id)}
+                    aria-current={selected === m.id}
+                    className={`w-full rounded-xl border px-4 py-3 text-left ${selected === m.id ? "border-sage bg-paper" : "border-line bg-paper/60 hover:border-ink-soft"}`}
+                  >
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="font-bold">{m.name}</span>
+                      {m.priority && (
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${PRIORITY_STYLES[m.priority] ?? ""}`}>
+                          {m.priority}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-1 block text-sm text-ink-soft">
+                      {m.summary ?? m.subject}
+                    </span>
+                    <span className="mt-1 block text-xs text-ink-soft">
+                      {m.category ? CATEGORY_LABELS[m.category] ?? m.category : STATUS_LABELS[m.status]}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-        <section aria-label="Selected message">
-          {selected === null ? (
-            <p className="rounded-2xl border border-dashed border-line px-6 py-16 text-center text-ink-soft">
-              Choose a message to see the original and the drafted reply.
-            </p>
-          ) : (
-            // Remount when the status changes so a draft that finishes in the background shows up.
-            <MessagePanel
-              key={`${selected}-${messages.find((m) => m.id === selected)?.status ?? ""}`}
-              id={selected}
-              call={call}
-              onChanged={() => refresh()}
-            />
-          )}
-        </section>
-      </div>
+          <section aria-label="Selected message">
+            {selected === null ? (
+              <p className="rounded-2xl border border-dashed border-line px-6 py-16 text-center text-ink-soft">
+                Choose a message to see the original and the drafted reply.
+              </p>
+            ) : (
+              // Remount when the status changes so a draft that finishes in the background shows up.
+              <MessagePanel
+                key={`${selected}-${messages.find((m) => m.id === selected)?.status ?? ""}`}
+                id={selected}
+                call={call}
+                onChanged={() => refresh()}
+              />
+            )}
+          </section>
+        </div>
+      )}
       <p className="mx-auto max-w-7xl px-5 pb-8 text-sm text-ink-soft">
-        Demo: approved replies are saved as sent but no email is delivered.
+        Demo: no email is sent. Approved replies and appointment changes are only recorded here.
       </p>
     </div>
   );
 }
-
-type Call = <T>(path: string, init?: Parameters<typeof staffRequest>[2]) => Promise<T>;
 
 function MessagePanel({ id, call, onChanged }: { id: number; call: Call; onChanged: () => void }) {
   const [message, setMessage] = useState<MessageDetail | null>(null);
