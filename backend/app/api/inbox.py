@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import logging
-import secrets
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, StringConstraints
 
-from app.api.deps import enforce
+from app.api.deps import Email, Honeypot, Name, Phone, Text, enforce, require_staff
 from app.inbox.store import MessageStore
 from app.inbox.triage import Triager
 from app.llm.base import LLMError
@@ -17,19 +16,14 @@ from app.llm.base import LLMError
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-MIN_STAFF_TOKEN_LENGTH = 16
-
-Text = Annotated[str, StringConstraints(strip_whitespace=True)]
-
 
 class ContactForm(BaseModel):
-    name: Annotated[Text, StringConstraints(min_length=1, max_length=100)]
-    email: Annotated[Text, StringConstraints(max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")]
-    phone: Annotated[Text, StringConstraints(max_length=30)] | None = None
+    name: Name
+    email: Email
+    phone: Phone | None = None
     subject: Annotated[Text, StringConstraints(min_length=1, max_length=150)]
     message: Annotated[Text, StringConstraints(min_length=10, max_length=3000)]
-    # Hidden field on the form. People never fill it in; simple spam bots usually do.
-    website: str = Field(default="", max_length=200)
+    website: Honeypot = ""
 
 
 class ApproveRequest(BaseModel):
@@ -39,23 +33,6 @@ class ApproveRequest(BaseModel):
 def get_store(request: Request) -> MessageStore:
     store: MessageStore = request.app.state.store
     return store
-
-
-def require_staff(request: Request) -> None:
-    expected = request.app.state.settings.staff_token.get_secret_value()
-    if len(expected) < MIN_STAFF_TOKEN_LENGTH:
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Staff access is disabled. Set STAFF_TOKEN (16+ characters) on the server.",
-        )
-    header = request.headers.get("authorization", "")
-    scheme, _, token = header.partition(" ")
-    if scheme.lower() != "bearer" or not secrets.compare_digest(token.encode(), expected.encode()):
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "Invalid staff token",
-            headers={"www-authenticate": "Bearer"},
-        )
 
 
 async def run_triage(store: MessageStore, triager: Triager, message_id: int) -> None:
